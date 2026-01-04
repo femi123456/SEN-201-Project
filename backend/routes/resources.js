@@ -5,10 +5,14 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 
-// Ensure uploads directory exists
+// Ensure uploads directory exists (Safe for Serverless)
 const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+try {
+  if (!process.env.VERCEL && !fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn('Could not create uploads directory:', err.message);
 }
 
 // Multer Config
