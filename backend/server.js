@@ -1,4 +1,6 @@
-require('dotenv').config();
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -7,19 +9,21 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Connect to Database
-db.connectDB();
-
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Database Connection Middleware (Important for Serverless)
 app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api')) {
-    await db.connectDB();
+  try {
+    if (req.path.startsWith('/api')) {
+      await db.connectDB();
+    }
+    next();
+  } catch (err) {
+    console.error('DB Middleware Error:', err);
+    res.status(500).json({ msg: 'Database connection failed', error: err.message });
   }
-  next();
 });
 
 // API Routes
@@ -27,6 +31,19 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/ai', require('./routes/ai'));
+
+// Diagnostic Route
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    database: db.isConnected() ? 'Connected' : 'Disconnected',
+    env_check: {
+      has_mongo: !!process.env.MONGO_URI,
+      has_jwt: !!process.env.JWT_SECRET,
+      has_gemini: !!process.env.GEMINI_API_KEY
+    }
+  });
+});
 
 // Serve Uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -49,8 +66,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
   app.get('/', (req, res) => {
     res.json({
       msg: 'NileVault API Running...',
-      status: 'Ready',
-      database: db.isConnected() ? 'Connected' : 'Disconnected'
+      status: 'Ready'
     });
   });
 }
