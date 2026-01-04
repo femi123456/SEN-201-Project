@@ -3,9 +3,6 @@ const router = express.Router();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const db = require('../db');
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key');
-
 // @route   POST /api/ai/chat
 // @desc    Chat with NileAI assistant
 // @access  Public (should be protected)
@@ -39,12 +36,13 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    // Real Gemini Implementation
+    // Initialize Gemini inside the handler for serverless stability
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const systemPrompt = `You are NileAI, a helpful academic assistant for Nile University students. 
     The current user is a ${userContext.level} level student in the ${userContext.department} department.
-    Here is a list of available resources: ${JSON.stringify(resources.map(r => ({ title: r.title, category: r.category, id: r.id })))}.
+    Here is a list of available resources: ${JSON.stringify(resources.map(r => ({ title: r.title, category: r.category, id: r._id })))}.
     
     When a student asks for materials, refer to these resources specifically. 
     Be professional, encouraging, and concise. 
@@ -54,7 +52,7 @@ router.post('/chat', async (req, res) => {
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
         { role: "model", parts: [{ text: "Understood. I am NileAI, ready to assist students with their academic resources." }] },
-        ...history.map(h => ({
+        ...history.slice(-10).map(h => ({ // Limit history for context window
           role: h.role === 'ai' ? 'model' : 'user',
           parts: [{ text: h.text }]
         }))
@@ -68,7 +66,7 @@ router.post('/chat', async (req, res) => {
     res.json({ message: text });
   } catch (err) {
     console.error('AI Route Error:', err);
-    res.status(500).json({ msg: 'AI Assistant is temporarily unavailable' });
+    res.status(500).json({ msg: 'AI Assistant is temporarily unavailable', error: err.message });
   }
 });
 
