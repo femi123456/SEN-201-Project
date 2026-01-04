@@ -14,6 +14,14 @@ db.connectDB();
 app.use(cors());
 app.use(express.json());
 
+// Database Connection Middleware (Important for Serverless)
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    await db.connectDB();
+  }
+  next();
+});
+
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
@@ -39,7 +47,11 @@ if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
   });
 } else {
   app.get('/', (req, res) => {
-    res.json({ msg: 'NileVault API Running...', env: process.env.NODE_ENV });
+    res.json({
+      msg: 'NileVault API Running...',
+      status: 'Ready',
+      database: db.isConnected() ? 'Connected' : 'Disconnected'
+    });
   });
 }
 
