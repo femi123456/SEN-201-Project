@@ -14,7 +14,6 @@ router.post('/chat', async (req, res) => {
 
     // Check if API KEY exists
     if (!process.env.GEMINI_API_KEY) {
-      // Logic for fallback "Smart Filter"
       const lowerMsg = message.toLowerCase();
       const matched = resources.filter(r =>
         r.title.toLowerCase().includes(lowerMsg) ||
@@ -36,10 +35,10 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    // Initialize Gemini inside the handler for serverless stability
+    // Initialize Gemini 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+    // System instruction is now passed as a separate parameter
     const systemPrompt = `You are NileAI, a helpful academic assistant for Nile University students. 
     The current user is a ${userContext.level} level student in the ${userContext.department} department.
     Here is a list of available resources: ${JSON.stringify(resources.map(r => ({ title: r.title, category: r.category, id: r._id })))}.
@@ -48,15 +47,33 @@ router.post('/chat', async (req, res) => {
     Be professional, encouraging, and concise. 
     If they ask for something not in the list, acknowledge it and suggest they check the "Browse Resources" tab or upload it if they have it.`;
 
-    const chat = model.startChat({
-      history: [
-        { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Understood. I am NileAI, ready to assist students with their academic resources." }] },
-        ...history.slice(-10).map(h => ({ // Limit history for context window
-          role: h.role === 'ai' ? 'model' : 'user',
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      systemInstruction: systemPrompt
+    });
+
+    // Ensure history alternates roles (User -> Model -> User -> Model)
+    // We filter the history to make sure it follows the protocol
+    const chatHistory = history
+      .slice(-10) // Keep it short
+      .map((h, index, array) => {
+        const role = h.role === 'ai' ? 'model' : 'user';
+        // If the current role is the same as the previous, we ignore it to prevent crash
+        if (index > 0 && (array[index - 1].role === h.role)) {
+          return null;
+        }
+        return {
+          role,
           parts: [{ text: h.text }]
-        }))
-      ],
+        };
+      })
+      .filter(item => item !== null);
+
+    // If the last message in history is from 'model', Gemini expects the next message from 'user' (which is the new message)
+    // This is correct. If history is empty, no problem.
+
+    const chat = model.startChat({
+      history: chatHistory,
     });
 
     const result = await chat.sendMessage(message);
